@@ -151,6 +151,9 @@ def dllm_attention_up_bwd_impl(
 
     num_cores, num_vectorcore = get_device_properties()
     d = torch.empty(q.shape[1], q.shape[0], device=q.device, dtype=torch.float32).T
+    # dq = torch.zeros_like(q)
+    # dk = torch.zeros_like(k)
+    # dv = torch.zeros_like(v)
     dq = torch.empty_like(q)
     dk = torch.empty_like(k)
     dv = torch.empty_like(v)
@@ -241,7 +244,8 @@ def dllm_attention_up_bwd_impl(
         d.stride(1),
         mask_ul.stride(0),
     )
-    kernel_da_bwd_kv_ur[(num_cores,)](
+    # kernel_da_bwd_kv_ur[(num_cores,)](
+    kernel_da_bwd_kv_ur(
         q,
         k,
         v,
@@ -270,6 +274,7 @@ def dllm_attention_up_bwd_impl(
         d.stride(0),
         d.stride(1),
         mask_ur.stride(0),
+        num_cores,
     )
 
     return dq, dk, dv

@@ -1,3 +1,4 @@
+import torch
 import triton
 import triton.language as tl
 
@@ -7,13 +8,13 @@ from .micro_kernel import micro_kernel_bwd_kv
 @triton.autotune(
     configs=[
         triton.Config(
-            {"BLOCK_R": 256, "BLOCK_C": 64},
+            {"BLOCK_C": 64},
         )
     ],
     key=["N", "H"],
 )
 @triton.jit(do_not_specialize=["cu_seqlens", "num_seqs", "S", "STRIDE_D_N"])
-def kernel_da_bwd_kv_ur(
+def _kernel_bwd_kv_ur_masked(
     q,
     k,
     v,
@@ -42,7 +43,6 @@ def kernel_da_bwd_kv_ur(
     STRIDE_D_S: tl.constexpr,
     STRIDE_D_N,
     STRIDE_MASK: tl.constexpr,
-    BLOCK_R: tl.constexpr,
     BLOCK_C: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -98,6 +98,8 @@ def kernel_da_bwd_kv_ur(
             block_v = tl.load(ptr_v, mask=mask_kv, other=0.0)
             block_dk = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
             block_dv = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
+            # block_dk = tl.load(ptr_dk, mask=mask_kv, other=0.0)
+            # block_dv = tl.load(ptr_dv, mask=mask_kv, other=0.0)
 
             block_k = tl.trans(block_k)
             block_v = tl.trans(block_v)
@@ -134,6 +136,120 @@ def kernel_da_bwd_kv_ur(
                     boundary_mask=boundary_mask,
                 )
 
+            tl.store(ptr_dk, block_dk, mask=mask_kv)
+            tl.store(ptr_dv, block_dv, mask=mask_kv)
+        seq_st = seq_ed
+        offset_block_c_st = offset_block_c_ed
+
+
+@triton.autotune(
+    configs=[
+        triton.Config(
+            {"BLOCK_R": 256, "BLOCK_C": 64},
+        )
+    ],
+    key=["N", "H"],
+)
+@triton.jit(do_not_specialize=["cu_seqlens", "num_seqs", "S", "STRIDE_D_N"])
+def _kernel_bwd_kv_ur_residual(
+    q,
+    k,
+    v,
+    do,
+    d,
+    lse,
+    dk,
+    dv,
+    cu_seqlens,
+    num_seqs,
+    scale,
+    GROUP_SIZE: tl.constexpr,
+    S,
+    N: tl.constexpr,
+    H: tl.constexpr,
+    STRIDE_Q_S: tl.constexpr,
+    STRIDE_Q_N: tl.constexpr,
+    STRIDE_Q_H: tl.constexpr,
+    STRIDE_K_S: tl.constexpr,
+    STRIDE_K_N: tl.constexpr,
+    STRIDE_K_H: tl.constexpr,
+    STRIDE_V_S: tl.constexpr,
+    STRIDE_V_N: tl.constexpr,
+    STRIDE_V_H: tl.constexpr,
+    STRIDE_D_S: tl.constexpr,
+    STRIDE_D_N,
+    BLOCK_R: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    # tl.device_print("kernel start!", pid)
+    pnum = tl.num_programs(axis=0)
+
+    seq_st = 0
+    offset_block_c_st = 0
+    NUM_GROUP = N // GROUP_SIZE
+    
+
+    for idx_seq in range(num_seqs):
+        # tl.device_print("for 1 start!", pid)
+        seq_ed = tl.load(cu_seqlens + idx_seq)
+        offset_block_c_ed = offset_block_c_st + tl.cdiv(seq_ed - seq_st, BLOCK_C)
+        for task_id in range(
+            offset_block_c_st * NUM_GROUP + ((pid % pnum - offset_block_c_st * NUM_GROUP % pnum + pnum) % pnum),
+            offset_block_c_ed * NUM_GROUP,
+            pnum,
+        ):
+            # tl.device_print("for 2 start!", pid)
+            idx_c = task_id // NUM_GROUP - offset_block_c_st
+            idx_group = task_id % NUM_GROUP
+            offs_h = tl.arange(0, H)
+
+            ptr_k = (
+                k
+                + idx_group * STRIDE_K_N
+                + (S + seq_st + idx_c * BLOCK_C + tl.arange(0, BLOCK_C))[:, None] * STRIDE_K_S
+                + offs_h[None, :] * STRIDE_K_H
+            )
+            ptr_v = (
+                v
+                + idx_group * STRIDE_V_N
+                + (S + seq_st + idx_c * BLOCK_C + tl.arange(0, BLOCK_C))[:, None] * STRIDE_V_S
+                + offs_h[None, :] * STRIDE_V_H
+            )
+            ptr_dk = (
+                dk
+                + idx_group * STRIDE_K_N
+                + (S + seq_st + idx_c * BLOCK_C + tl.arange(0, BLOCK_C))[:, None] * STRIDE_K_S
+                + offs_h[None, :] * STRIDE_K_H
+            )
+            ptr_dv = (
+                dv
+                + idx_group * STRIDE_V_N
+                + (S + seq_st + idx_c * BLOCK_C + tl.arange(0, BLOCK_C))[:, None] * STRIDE_V_S
+                + offs_h[None, :] * STRIDE_V_H
+            )
+            mask_kv = (seq_st + idx_c * BLOCK_C + tl.arange(0, BLOCK_C))[:, None] < seq_ed
+
+            # tl.device_print("load!", pid)
+
+            block_k = tl.load(ptr_k, mask=mask_kv, other=0.0)
+            block_v = tl.load(ptr_v, mask=mask_kv, other=0.0)
+            # block_dk = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
+            # block_dv = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
+            block_dk = tl.load(ptr_dk, mask=mask_kv, other=0.0)
+            block_dv = tl.load(ptr_dv, mask=mask_kv, other=0.0)
+            # tl.device_print("load fin!", pid)
+
+            block_k = tl.trans(block_k)
+            block_v = tl.trans(block_v)
+
+            # residual_start = idx_c + 1
+            # residual_end = (idx_c * BLOCK_C // BLOCK_R + 1) * BLOCK_R // BLOCK_C
+
+            for idx_ingroup in range(GROUP_SIZE):
+                idx_n = idx_group * GROUP_SIZE + idx_ingroup
+                # tl.device_print("compute start!")
+
                 for idx_tile_r in range(idx_c + 1, (idx_c * BLOCK_C // BLOCK_R + 1) * BLOCK_R // BLOCK_C):
                     block_dk, block_dv = micro_kernel_bwd_kv(
                         q,
@@ -157,6 +273,109 @@ def kernel_da_bwd_kv_ur(
                         STRIDE_D_N,
                         BLOCK_C,
                     )
+                    # tl.device_print("micro end!")
+            # tl.device_print("store!", pid)
+            tl.store(ptr_dk, block_dk, mask=mask_kv)
+            tl.store(ptr_dv, block_dv, mask=mask_kv)
+            # tl.device_print("store fin!", pid)
+        seq_st = seq_ed
+        offset_block_c_st = offset_block_c_ed
+
+
+@triton.autotune(
+    configs=[
+        triton.Config(
+            {"BLOCK_R": 256, "BLOCK_C": 64},
+        )
+    ],
+    key=["N", "H"],
+)
+@triton.jit(do_not_specialize=["cu_seqlens", "num_seqs", "S", "STRIDE_D_N"])
+def _kernel_bwd_kv_ur_aligned(
+    q,
+    k,
+    v,
+    do,
+    d,
+    lse,
+    dk,
+    dv,
+    cu_seqlens,
+    num_seqs,
+    scale,
+    GROUP_SIZE: tl.constexpr,
+    S,
+    N: tl.constexpr,
+    H: tl.constexpr,
+    STRIDE_Q_S: tl.constexpr,
+    STRIDE_Q_N: tl.constexpr,
+    STRIDE_Q_H: tl.constexpr,
+    STRIDE_K_S: tl.constexpr,
+    STRIDE_K_N: tl.constexpr,
+    STRIDE_K_H: tl.constexpr,
+    STRIDE_V_S: tl.constexpr,
+    STRIDE_V_N: tl.constexpr,
+    STRIDE_V_H: tl.constexpr,
+    STRIDE_D_S: tl.constexpr,
+    STRIDE_D_N,
+    BLOCK_R: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    pnum = tl.num_programs(axis=0)
+
+    seq_st = 0
+    offset_block_c_st = 0
+    NUM_GROUP = N // GROUP_SIZE
+
+    for idx_seq in range(num_seqs):
+        seq_ed = tl.load(cu_seqlens + idx_seq)
+        offset_block_c_ed = offset_block_c_st + tl.cdiv(seq_ed - seq_st, BLOCK_C)
+        for task_id in range(
+            offset_block_c_st * NUM_GROUP + ((pid % pnum - offset_block_c_st * NUM_GROUP % pnum + pnum) % pnum),
+            offset_block_c_ed * NUM_GROUP,
+            pnum,
+        ):
+            idx_c = task_id // NUM_GROUP - offset_block_c_st
+            idx_group = task_id % NUM_GROUP
+            offs_h = tl.arange(0, H)
+
+            ptr_k = (
+                k
+                + idx_group * STRIDE_K_N
+                + (S + seq_st + idx_c * BLOCK_C + tl.arange(0, BLOCK_C))[:, None] * STRIDE_K_S
+                + offs_h[None, :] * STRIDE_K_H
+            )
+            ptr_v = (
+                v
+                + idx_group * STRIDE_V_N
+                + (S + seq_st + idx_c * BLOCK_C + tl.arange(0, BLOCK_C))[:, None] * STRIDE_V_S
+                + offs_h[None, :] * STRIDE_V_H
+            )
+            ptr_dk = (
+                dk
+                + idx_group * STRIDE_K_N
+                + (S + seq_st + idx_c * BLOCK_C + tl.arange(0, BLOCK_C))[:, None] * STRIDE_K_S
+                + offs_h[None, :] * STRIDE_K_H
+            )
+            ptr_dv = (
+                dv
+                + idx_group * STRIDE_V_N
+                + (S + seq_st + idx_c * BLOCK_C + tl.arange(0, BLOCK_C))[:, None] * STRIDE_V_S
+                + offs_h[None, :] * STRIDE_V_H
+            )
+            mask_kv = (seq_st + idx_c * BLOCK_C + tl.arange(0, BLOCK_C))[:, None] < seq_ed
+
+            block_k = tl.load(ptr_k, mask=mask_kv, other=0.0)
+            block_v = tl.load(ptr_v, mask=mask_kv, other=0.0)
+            block_dk = tl.load(ptr_dk, mask=mask_kv, other=0.0)
+            block_dv = tl.load(ptr_dv, mask=mask_kv, other=0.0)
+
+            block_k = tl.trans(block_k)
+            block_v = tl.trans(block_v)
+
+            for idx_ingroup in range(GROUP_SIZE):
+                idx_n = idx_group * GROUP_SIZE + idx_ingroup
 
                 for idx_r in range(idx_c * BLOCK_C // BLOCK_R + 1, (seq_ed - seq_st + BLOCK_R - 1) // BLOCK_R):
                     block_dk, block_dv = micro_kernel_bwd_kv(
@@ -182,7 +401,75 @@ def kernel_da_bwd_kv_ur(
                         BLOCK_R,
                     )
 
-            tl.store(ptr_dk, block_dk.to(tl.bfloat16), mask=mask_kv)
-            tl.store(ptr_dv, block_dv.to(tl.bfloat16), mask=mask_kv)
+            tl.store(ptr_dk, block_dk, mask=mask_kv)
+            tl.store(ptr_dv, block_dv, mask=mask_kv)
         seq_st = seq_ed
         offset_block_c_st = offset_block_c_ed
+
+
+def kernel_da_bwd_kv_ur(
+    q,
+    k,
+    v,
+    do,
+    d,
+    lse,
+    dk,
+    dv,
+    cu_seqlens,
+    num_seqs,
+    scale,
+    mask_ur,
+    GROUP_SIZE,
+    S,
+    N,
+    H,
+    STRIDE_Q_S,
+    STRIDE_Q_N,
+    STRIDE_Q_H,
+    STRIDE_K_S,
+    STRIDE_K_N,
+    STRIDE_K_H,
+    STRIDE_V_S,
+    STRIDE_V_N,
+    STRIDE_V_H,
+    STRIDE_D_S,
+    STRIDE_D_N,
+    STRIDE_MASK,
+    num_cores,
+):
+    dk_workspace = torch.zeros_like(dk, dtype=torch.float32)
+    dv_workspace = torch.zeros_like(dv, dtype=torch.float32)
+
+    print("masked start!!")
+    _kernel_bwd_kv_ur_masked[(num_cores,)](
+        q, k, v, do, d, lse, dk_workspace, dv_workspace,
+        cu_seqlens, num_seqs, scale, mask_ur,
+        GROUP_SIZE, S, N, H,
+        STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
+        STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
+        STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
+        STRIDE_D_S, STRIDE_D_N, STRIDE_MASK,
+    )
+    print("masked fin!!")
+    _kernel_bwd_kv_ur_residual[(num_cores,)](
+        q, k, v, do, d, lse, dk_workspace, dv_workspace,
+        cu_seqlens, num_seqs, scale,
+        GROUP_SIZE, S, N, H,
+        STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
+        STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
+        STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
+        STRIDE_D_S, STRIDE_D_N,
+    )
+    # _kernel_bwd_kv_ur_aligned[(num_cores,)](
+    #     q, k, v, do, d, lse, dk_workspace, dv_workspace,
+    #     cu_seqlens, num_seqs, scale,
+    #     GROUP_SIZE, S, N, H,
+    #     STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
+    #     STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
+    #     STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
+    #     STRIDE_D_S, STRIDE_D_N,
+    # )
+
+    dk[S:] = dk_workspace[S:].to(torch.bfloat16)
+    dv[S:] = dv_workspace[S:].to(torch.bfloat16)
