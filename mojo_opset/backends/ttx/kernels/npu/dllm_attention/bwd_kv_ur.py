@@ -7,9 +7,51 @@ from .micro_kernel import micro_kernel_bwd_kv
 
 @triton.autotune(
     configs=[
+        # triton.Config(
+        #     {"BLOCK_C": 64},
+        #     tile_mix_vector_loop=2,
+        #     tile_mix_cube_loop=2, 
+        # ),
         triton.Config(
             {"BLOCK_C": 64},
-        )
+            tile_mix_vector_loop=2,
+            tile_mix_cube_loop=4, 
+        ),
+        # triton.Config(
+        #     {"BLOCK_C": 64},
+        #     tile_mix_vector_loop=2,
+        #     tile_mix_cube_loop=8, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_C": 64},
+        #     tile_mix_vector_loop=4,
+        #     tile_mix_cube_loop=2, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_C": 64},
+        #     tile_mix_vector_loop=4,
+        #     tile_mix_cube_loop=4, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_C": 64},
+        #     tile_mix_vector_loop=4,
+        #     tile_mix_cube_loop=8, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_C": 64},
+        #     tile_mix_vector_loop=8,
+        #     tile_mix_cube_loop=2, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_C": 64},
+        #     tile_mix_vector_loop=8,
+        #     tile_mix_cube_loop=4, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_C": 64},
+        #     tile_mix_vector_loop=8,
+        #     tile_mix_cube_loop=8, 
+        # ),
     ],
     key=["N", "H"],
 )
@@ -144,9 +186,54 @@ def _kernel_bwd_kv_ur_masked(
 
 @triton.autotune(
     configs=[
+        # triton.Config(
+        #     {"BLOCK_R": 256, "BLOCK_C": 64},
+        #     tile_mix_vector_loop=2,
+        #     tile_mix_cube_loop=2, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_R": 256, "BLOCK_C": 64},
+        #     tile_mix_vector_loop=2,
+        #     tile_mix_cube_loop=4, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_R": 256, "BLOCK_C": 64},
+        #     tile_mix_vector_loop=2,
+        #     tile_mix_cube_loop=8, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_R": 256, "BLOCK_C": 64},
+        #     tile_mix_vector_loop=4,
+        #     tile_mix_cube_loop=2, 
+        # ),
         triton.Config(
             {"BLOCK_R": 256, "BLOCK_C": 64},
-        )
+            tile_mix_vector_loop=4,
+            tile_mix_cube_loop=4, 
+        ),
+        # triton.Config(
+        #     {"BLOCK_R": 256, "BLOCK_C": 64},
+        #     tile_mix_vector_loop=4,
+        #     tile_mix_cube_loop=8, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_R": 256, "BLOCK_C": 64},
+        #     tile_mix_vector_loop=8,
+        #     tile_mix_cube_loop=2, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_R": 256, "BLOCK_C": 64},
+        #     tile_mix_vector_loop=8,
+        #     tile_mix_cube_loop=4, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_R": 256, "BLOCK_C": 64},
+        #     tile_mix_vector_loop=8,
+        #     tile_mix_cube_loop=8, 
+        # ),
+        # triton.Config(
+        #     {"BLOCK_R": 256, "BLOCK_C": 64},
+        # ),
     ],
     key=["N", "H"],
 )
@@ -234,10 +321,10 @@ def _kernel_bwd_kv_ur_residual(
 
             block_k = tl.load(ptr_k, mask=mask_kv, other=0.0)
             block_v = tl.load(ptr_v, mask=mask_kv, other=0.0)
-            # block_dk = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
-            # block_dv = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
-            block_dk = tl.load(ptr_dk, mask=mask_kv, other=0.0)
-            block_dv = tl.load(ptr_dv, mask=mask_kv, other=0.0)
+            block_dk = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
+            block_dv = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
+            # block_dk = tl.load(ptr_dk, mask=mask_kv, other=0.0)
+            # block_dv = tl.load(ptr_dv, mask=mask_kv, other=0.0)
             # tl.device_print("load fin!", pid)
 
             block_k = tl.trans(block_k)
@@ -286,7 +373,52 @@ def _kernel_bwd_kv_ur_residual(
     configs=[
         triton.Config(
             {"BLOCK_R": 256, "BLOCK_C": 64},
-        )
+            tile_mix_vector_loop=2,
+            tile_mix_cube_loop=2, 
+        ),
+        triton.Config(
+            {"BLOCK_R": 256, "BLOCK_C": 64},
+            tile_mix_vector_loop=2,
+            tile_mix_cube_loop=4, 
+        ),
+        triton.Config(
+            {"BLOCK_R": 256, "BLOCK_C": 64},
+            tile_mix_vector_loop=2,
+            tile_mix_cube_loop=8, 
+        ),
+        triton.Config(
+            {"BLOCK_R": 256, "BLOCK_C": 64},
+            tile_mix_vector_loop=4,
+            tile_mix_cube_loop=2, 
+        ),
+        triton.Config(
+            {"BLOCK_R": 256, "BLOCK_C": 64},
+            tile_mix_vector_loop=4,
+            tile_mix_cube_loop=4, 
+        ),
+        triton.Config(
+            {"BLOCK_R": 256, "BLOCK_C": 64},
+            tile_mix_vector_loop=4,
+            tile_mix_cube_loop=8, 
+        ),
+        triton.Config(
+            {"BLOCK_R": 256, "BLOCK_C": 64},
+            tile_mix_vector_loop=8,
+            tile_mix_cube_loop=2, 
+        ),
+        triton.Config(
+            {"BLOCK_R": 256, "BLOCK_C": 64},
+            tile_mix_vector_loop=8,
+            tile_mix_cube_loop=4, 
+        ),
+        triton.Config(
+            {"BLOCK_R": 256, "BLOCK_C": 64},
+            tile_mix_vector_loop=8,
+            tile_mix_cube_loop=8, 
+        ),
+        # triton.Config(
+        #     {"BLOCK_R": 256, "BLOCK_C": 64},
+        # ),
     ],
     key=["N", "H"],
 )
@@ -368,8 +500,10 @@ def _kernel_bwd_kv_ur_aligned(
 
             block_k = tl.load(ptr_k, mask=mask_kv, other=0.0)
             block_v = tl.load(ptr_v, mask=mask_kv, other=0.0)
-            block_dk = tl.load(ptr_dk, mask=mask_kv, other=0.0)
-            block_dv = tl.load(ptr_dv, mask=mask_kv, other=0.0)
+            block_dk = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
+            block_dv = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
+            # block_dk = tl.load(ptr_dk, mask=mask_kv, other=0.0)
+            # block_dv = tl.load(ptr_dv, mask=mask_kv, other=0.0)
 
             block_k = tl.trans(block_k)
             block_v = tl.trans(block_v)
@@ -438,38 +572,67 @@ def kernel_da_bwd_kv_ur(
     STRIDE_MASK,
     num_cores,
 ):
-    dk_workspace = torch.zeros_like(dk, dtype=torch.float32)
-    dv_workspace = torch.zeros_like(dv, dtype=torch.float32)
+    
+    # dk_workspace = torch.zeros_like(dk, dtype=torch.float32).npu()
+    # dv_workspace = torch.zeros_like(dv, dtype=torch.float32).npu()
 
-    print("masked start!!")
+    dk_masked = torch.zeros_like(dk, dtype=torch.float32).npu()
+    dk_residual = torch.zeros_like(dk, dtype=torch.float32).npu()
+    dk_aligned = torch.zeros_like(dk, dtype=torch.float32).npu()
+    dv_masked = torch.zeros_like(dv, dtype=torch.float32).npu()
+    dv_residual = torch.zeros_like(dv, dtype=torch.float32).npu()
+    dv_aligned = torch.zeros_like(dv, dtype=torch.float32).npu()
+
+    # print("masked start!!")
     _kernel_bwd_kv_ur_masked[(num_cores,)](
-        q, k, v, do, d, lse, dk_workspace, dv_workspace,
+        q, k, v, do, d, lse, dk_masked, dv_masked,
         cu_seqlens, num_seqs, scale, mask_ur,
         GROUP_SIZE, S, N, H,
         STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
         STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
         STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
         STRIDE_D_S, STRIDE_D_N, STRIDE_MASK,
+        enable_ubuf_saving=True,
+        multibuffer=True, # 现在默认是True，可不写，控制开double_buffer
+        unit_flag=True, #cube搬出的一个优化项，比较容易卡死
+        limit_auto_multi_buffer_only_for_local_buffer=False,
+        set_workspace_multibuffer=4, 
+        # tile_mix_vector_loop=2,   # 可以2，4，8，主要修改此值
+        # tile_mix_cube_loop=4,    #可以2，4，8 去配，主要修改此值
     )
-    print("masked fin!!")
+    # print("masked fin!!")
     _kernel_bwd_kv_ur_residual[(num_cores,)](
-        q, k, v, do, d, lse, dk_workspace, dv_workspace,
+        q, k, v, do, d, lse, dk_residual, dv_residual,
         cu_seqlens, num_seqs, scale,
         GROUP_SIZE, S, N, H,
         STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
         STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
         STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
         STRIDE_D_S, STRIDE_D_N,
+        enable_ubuf_saving=True,
+        multibuffer=True, # 现在默认是True，可不写，控制开double_buffer
+        unit_flag=True, #cube搬出的一个优化项，比较容易卡死
+        limit_auto_multi_buffer_only_for_local_buffer=False,
+        set_workspace_multibuffer=4, 
+        # tile_mix_vector_loop=2,   # 可以2，4，8，主要修改此值
+        # tile_mix_cube_loop=4,    #可以2，4，8 去配，主要修改此值
     )
-    # _kernel_bwd_kv_ur_aligned[(num_cores,)](
-    #     q, k, v, do, d, lse, dk_workspace, dv_workspace,
-    #     cu_seqlens, num_seqs, scale,
-    #     GROUP_SIZE, S, N, H,
-    #     STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
-    #     STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
-    #     STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
-    #     STRIDE_D_S, STRIDE_D_N,
-    # )
+    _kernel_bwd_kv_ur_aligned[(num_cores,)](
+        q, k, v, do, d, lse, dk_aligned, dv_aligned,
+        cu_seqlens, num_seqs, scale,
+        GROUP_SIZE, S, N, H,
+        STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
+        STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
+        STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
+        STRIDE_D_S, STRIDE_D_N,
+        enable_ubuf_saving=True,
+        multibuffer=True, # 现在默认是True，可不写，控制开double_buffer
+        unit_flag=True, #cube搬出的一个优化项，比较容易卡死
+        limit_auto_multi_buffer_only_for_local_buffer=False,
+        set_workspace_multibuffer=4, 
+        # tile_mix_vector_loop=2,   # 可以2，4，8，主要修改此值
+        # tile_mix_cube_loop=4,    #可以2，4，8 去配，主要修改此值
+    )
 
-    dk[S:] = dk_workspace[S:].to(torch.bfloat16)
-    dv[S:] = dv_workspace[S:].to(torch.bfloat16)
+    dk[S:] = (dk_masked[S:] + dk_residual[S:] + dk_aligned[S:])#.to(torch.bfloat16)
+    dv[S:] = (dv_masked[S:] + dv_residual[S:] + dv_aligned[S:])#.to(torch.bfloat16)
