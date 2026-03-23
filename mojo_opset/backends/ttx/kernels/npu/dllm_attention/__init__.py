@@ -10,7 +10,7 @@ from .micro_kernel import packed_bool_to_i8
 from .fwd_u import kernel_da_fwd_u
 from .fwd_d import kernel_da_fwd_d
 from .bwd_d import kernel_da_bwd_d
-from .bwd_q_u import kernel_da_bwd_q_u
+from .bwd_q_u import kernel_da_bwd_q_u, kernel_da_bwd_q_u_single
 from .bwd_q_d import kernel_da_bwd_q_d
 from .bwd_kv_ul import kernel_da_bwd_kv_ul
 from .bwd_kv_ur import kernel_da_bwd_kv_ur
@@ -184,7 +184,7 @@ def dllm_attention_up_bwd_impl(
         d.stride(0),
         d.stride(1),
     )
-    kernel_da_bwd_q_u[(num_cores,)](
+    kernel_da_bwd_q_u(
         q,
         k,
         v,
@@ -213,6 +213,7 @@ def dllm_attention_up_bwd_impl(
         d.stride(0),
         d.stride(1),
         mask_ul.stride(0),
+        num_cores,
     )
     kernel_da_bwd_kv_ul[(num_cores,)](
         q,
@@ -469,7 +470,7 @@ def dllm_attention_bwd_impl(
         d.stride(0),
         d.stride(1),
     )
-    kernel_da_bwd_q_u[(num_cores,)](
+    kernel_da_bwd_q_u_single[(num_cores,)](
         q,
         k,
         v,
