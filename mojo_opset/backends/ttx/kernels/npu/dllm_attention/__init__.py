@@ -7,7 +7,7 @@ import torch
 import triton
 
 from .micro_kernel import packed_bool_to_i8
-from .fwd_u import kernel_da_fwd_u
+from .fwd_u import kernel_da_fwd_u, kernel_da_fwd_u_single
 from .fwd_d import kernel_da_fwd_d
 from .bwd_d import kernel_da_bwd_d
 from .bwd_q_u import kernel_da_bwd_q_u, kernel_da_bwd_q_u_single
@@ -78,7 +78,8 @@ def dllm_attention_up_fwd_impl(
         dllm_attention_up_fwd_impl.masks[BLOCK_SIZE] = (mask_ul_i8.to(q.device), mask_ur_i8.to(q.device))
     mask_ul, mask_ur = dllm_attention_up_fwd_impl.masks[BLOCK_SIZE]
 
-    kernel_da_fwd_u[(num_cores,)](
+    kernel_da_fwd_u_single[(num_cores,)](
+    # kernel_da_fwd_u(
         q,
         k,
         v,
@@ -105,6 +106,7 @@ def dllm_attention_up_fwd_impl(
         lse.stride(0),
         lse.stride(1),
         mask_ul.stride(0),
+        # num_cores,
     )
 
     return o, lse
