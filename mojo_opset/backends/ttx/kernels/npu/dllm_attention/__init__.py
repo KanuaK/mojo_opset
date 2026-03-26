@@ -13,7 +13,7 @@ from .bwd_d import kernel_da_bwd_d
 from .bwd_q_u import kernel_da_bwd_q_u, kernel_da_bwd_q_u_single
 from .bwd_q_d import kernel_da_bwd_q_d
 from .bwd_kv_ul import kernel_da_bwd_kv_ul
-from .bwd_kv_ur import kernel_da_bwd_kv_ur
+from .bwd_kv_ur import kernel_da_bwd_kv_ur, kernel_da_bwd_kv_ur_single
 from .bwd_kv_r import kernel_da_bwd_kv_r
 
 
@@ -151,12 +151,9 @@ def dllm_attention_up_bwd_impl(
 
     num_cores, num_vectorcore = get_device_properties()
     d = torch.empty(q.shape[1], q.shape[0], device=q.device, dtype=torch.float32).T
-    # dq = torch.zeros_like(q)
-    # dk = torch.zeros_like(k)
-    # dv = torch.zeros_like(v)
-    dq = torch.empty_like(q)
-    dk = torch.empty_like(k)
-    dv = torch.empty_like(v)
+    dq = torch.zeros_like(q)
+    dk = torch.zeros_like(k)
+    dv = torch.zeros_like(v)
 
     if (not hasattr(dllm_attention_up_bwd_impl, "masks")):
         dllm_attention_up_bwd_impl.masks = {}
@@ -184,6 +181,7 @@ def dllm_attention_up_bwd_impl(
         d.stride(0),
         d.stride(1),
     )
+    # kernel_da_bwd_q_u_single[(num_cores,)](
     kernel_da_bwd_q_u(
         q,
         k,
@@ -245,7 +243,7 @@ def dllm_attention_up_bwd_impl(
         d.stride(1),
         mask_ul.stride(0),
     )
-    # kernel_da_bwd_kv_ur[(num_cores,)](
+    # kernel_da_bwd_kv_ur_single[(num_cores,)](
     kernel_da_bwd_kv_ur(
         q,
         k,
