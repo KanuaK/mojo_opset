@@ -48,6 +48,7 @@ def micro_kernel_fwd(
     block_k = tl.load(ptr_k, mask=mask_kv, other=0.0)
     block_k = tl.trans(block_k)
     block_s = tl.dot(block_q, block_k) * scale
+    # tl.compile_hint(block_s, "tile_cube_loop",2)
     block_v = tl.load(ptr_v, mask=mask_kv, other=0.0)
     if boundary_mask is not None:
         block_s += ((boundary_mask.to(tl.float32) - 1.0) * 1e6)
@@ -59,6 +60,9 @@ def micro_kernel_fwd(
     block_l_1 = tl.exp(block_m - block_m_1) * block_l + tl.sum(block_s, axis=1)
     block_o = tl.exp(block_m - block_m_1)[:, None] * block_o
     block_o = block_o + tl.dot(block_s.to(tl.bfloat16), block_v)
+    # block_o_1 = tl.dot(block_s.to(tl.bfloat16), block_v)
+    # tl.compile_hint(block_o_1, "tile_cube_loop",2)
+    # block_o += block_o_1
 
     return block_o, block_m_1, block_l_1
 
@@ -233,6 +237,63 @@ def micro_kernel_bwd_kv_test(
     block_ds = block_p * (block_dp - block_d[:, None])
     block_q2 = tl.load(ptr_q2, mask=mask_q, other=0.0)
     block_dk += tl.dot(block_ds.to(tl.bfloat16).T, block_q2) * scale
+
+    return block_dk, block_dv
+
+@triton.jit
+def micro_kernel_bwd_kv_test2(
+    q,
+    block_k,
+    block_v,
+    do,
+    d,
+    block_dk,
+    block_dv,
+    lse,
+    scale,
+    scale_dv,
+    offset_r,
+    offset_r_ed,
+    block_mask,
+    idx_n,
+    offs_h,
+    STRIDE_Q_S: tl.constexpr,
+    STRIDE_Q_N: tl.constexpr,
+    STRIDE_Q_H: tl.constexpr,
+    STRIDE_D_S: tl.constexpr,
+    STRIDE_D_N,
+    BLOCK_R: tl.constexpr,
+    boundary_mask=None,
+):
+    tl.static_assert(STRIDE_D_S == 1)
+    tl.static_assert(STRIDE_Q_H == 1)
+    ptr_q = (
+        q + idx_n * STRIDE_Q_N + (offset_r + tl.arange(0, BLOCK_R))[:, None] * STRIDE_Q_S + offs_h[None, :] * STRIDE_Q_H
+    )
+    ptr_do = (
+        do + idx_n * STRIDE_Q_N + (offset_r + tl.arange(0, BLOCK_R))[:, None] * STRIDE_Q_S + offs_h[None, :] * STRIDE_Q_H
+    )
+    ptr_d = d + idx_n * STRIDE_D_N + (offset_r + tl.arange(0, BLOCK_R))[:] * STRIDE_D_S
+    ptr_lse = lse + idx_n * STRIDE_D_N + (offset_r + tl.arange(0, BLOCK_R))[:] * STRIDE_D_S
+
+    mask_q = (offset_r + tl.arange(0, BLOCK_R))[:, None] < offset_r_ed
+    mask_d = (offset_r + tl.arange(0, BLOCK_R))[:] < offset_r_ed
+
+    block_q = tl.load(ptr_q, mask=mask_q, other=0.0)
+    block_lse = tl.load(ptr_lse, mask=mask_d, other=0.0)
+    block_s = tl.dot(block_q, block_k) * scale
+    if boundary_mask is not None:
+        block_s += ((boundary_mask.to(tl.float32) - 1.0) * 1e6)
+    if block_mask is not None:
+        block_s = tl.where(block_mask, block_s, -1.0e6)
+        tl.compile_hint(block_s, "bitwise_mask")
+    block_do = tl.load(ptr_do, mask=mask_q, other=0.0)
+    block_p = tl.exp(block_s - block_lse[:, None])
+    block_dv += tl.dot(block_p.to(tl.bfloat16).T, block_do) * scale_dv
+    block_d = tl.load(ptr_d, mask=mask_d, other=0.0)
+    block_dp = tl.dot(block_do, block_v)
+    block_ds = block_p * (block_dp - block_d[:, None])
+    block_dk += tl.dot(block_ds.to(tl.bfloat16).T, block_q) * scale
 
     return block_dk, block_dv
 

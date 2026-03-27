@@ -78,8 +78,8 @@ def dllm_attention_up_fwd_impl(
         dllm_attention_up_fwd_impl.masks[BLOCK_SIZE] = (mask_ul_i8.to(q.device), mask_ur_i8.to(q.device))
     mask_ul, mask_ur = dllm_attention_up_fwd_impl.masks[BLOCK_SIZE]
 
-    kernel_da_fwd_u_single[(num_cores,)](
-    # kernel_da_fwd_u(
+    # kernel_da_fwd_u_single[(num_cores,)](
+    kernel_da_fwd_u(
         q,
         k,
         v,
@@ -106,7 +106,7 @@ def dllm_attention_up_fwd_impl(
         lse.stride(0),
         lse.stride(1),
         mask_ul.stride(0),
-        # num_cores,
+        num_cores,
     )
 
     return o, lse
@@ -244,6 +244,10 @@ def dllm_attention_up_bwd_impl(
         d.stride(0),
         d.stride(1),
         mask_ul.stride(0),
+        limit_auto_multi_buffer_only_for_local_buffer=False,
+        set_workspace_multibuffer=4, 
+        tile_mix_vector_loop=2,
+        tile_mix_cube_loop=4,
     )
     # kernel_da_bwd_kv_ur_single[(num_cores,)](
     kernel_da_bwd_kv_ur(

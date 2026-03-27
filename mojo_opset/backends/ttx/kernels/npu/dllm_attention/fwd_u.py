@@ -141,10 +141,10 @@ def kernel_da_fwd_u_single(
         offset_block_r_st = offset_block_r_ed
 
 
-@triton.autotune(
-    configs=[triton.Config({"BLOCK_R": 64})],
-    key=["N", "H"],
-)
+# @triton.autotune(
+#     configs=[triton.Config({"BLOCK_R": 64})],
+#     key=["N", "H"],
+# )
 @triton.jit(do_not_specialize=["cu_seqlens", "num_seqs", "S", "STRIDE_D_N"])
 def _kernel_fwd_u_ul(
     q, k, v, o_out, m_out, l_out,
@@ -214,10 +214,10 @@ def _kernel_fwd_u_ul(
         offset_block_r_st = offset_block_r_ed
 
 
-@triton.autotune(
-    configs=[triton.Config({"BLOCK_R": 64})],
-    key=["N", "H"],
-)
+# @triton.autotune(
+#     configs=[triton.Config({"BLOCK_R": 64})],
+#     key=["N", "H"],
+# )
 @triton.jit(do_not_specialize=["cu_seqlens", "num_seqs", "S", "STRIDE_D_N"])
 def _kernel_fwd_u_ur(
     q, k, v, o_out, m_out, l_out,
@@ -287,10 +287,10 @@ def _kernel_fwd_u_ur(
         offset_block_r_st = offset_block_r_ed
 
 
-@triton.autotune(
-    configs=[triton.Config({"BLOCK_R": 64, "BLOCK_C": 256})],
-    key=["N", "H"],
-)
+# @triton.autotune(
+#     configs=[triton.Config({"BLOCK_R": 64, "BLOCK_C": 256})],
+#     key=["N", "H"],
+# )
 @triton.jit(do_not_specialize=["cu_seqlens", "num_seqs", "S", "STRIDE_D_N"])
 def _kernel_fwd_u_residual(
     q, k, v, o_out, m_out, l_out,
@@ -351,10 +351,10 @@ def _kernel_fwd_u_residual(
         offset_block_r_st = offset_block_r_ed
 
 
-@triton.autotune(
-    configs=[triton.Config({"BLOCK_R": 64, "BLOCK_C": 256})],
-    key=["N", "H"],
-)
+# @triton.autotune(
+#     configs=[triton.Config({"BLOCK_R": 64, "BLOCK_C": 256})],
+#     key=["N", "H"],
+# )
 @triton.jit(do_not_specialize=["cu_seqlens", "num_seqs", "S", "STRIDE_D_N"])
 def _kernel_fwd_u_aligned(
     q, k, v, o_out, m_out, l_out,
@@ -442,6 +442,9 @@ def kernel_da_fwd_u(
     o_residual, m_residual, l_residual = _make_o_ws(), _make_m_ws(), _make_l_ws()
     o_aligned, m_aligned, l_aligned = _make_o_ws(), _make_m_ws(), _make_l_ws()
 
+    BLOCK_R, BLOCK_C = 64, 256
+    tile_mix_vector_loop = 4
+
     _kernel_fwd_u_ul[(num_cores,)](
         q, k, v, o_ul, m_ul, l_ul,
         cu_seqlens, num_seqs, scale, mask_ul,
@@ -450,6 +453,11 @@ def kernel_da_fwd_u(
         STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
         STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
         STRIDE_D_S, STRIDE_D_N, STRIDE_MASK,
+        BLOCK_R,
+        limit_auto_multi_buffer_only_for_local_buffer=False,
+        set_workspace_multibuffer=4, 
+        tile_mix_vector_loop=tile_mix_vector_loop,
+        tile_mix_cube_loop=4,
     )
 
     _kernel_fwd_u_ur[(num_cores,)](
@@ -460,6 +468,11 @@ def kernel_da_fwd_u(
         STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
         STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
         STRIDE_D_S, STRIDE_D_N, STRIDE_MASK,
+        BLOCK_R,
+        limit_auto_multi_buffer_only_for_local_buffer=False,
+        set_workspace_multibuffer=4, 
+        tile_mix_vector_loop=tile_mix_vector_loop,
+        tile_mix_cube_loop=4,
     )
 
     _kernel_fwd_u_residual[(num_cores,)](
@@ -470,6 +483,11 @@ def kernel_da_fwd_u(
         STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
         STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
         STRIDE_D_S, STRIDE_D_N,
+        BLOCK_R, BLOCK_C,
+        limit_auto_multi_buffer_only_for_local_buffer=False,
+        set_workspace_multibuffer=4, 
+        tile_mix_vector_loop=tile_mix_vector_loop,
+        tile_mix_cube_loop=4,
     )
 
     _kernel_fwd_u_aligned[(num_cores,)](
@@ -480,6 +498,11 @@ def kernel_da_fwd_u(
         STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
         STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
         STRIDE_D_S, STRIDE_D_N,
+        BLOCK_R, BLOCK_C,
+        limit_auto_multi_buffer_only_for_local_buffer=False,
+        set_workspace_multibuffer=4, 
+        tile_mix_vector_loop=tile_mix_vector_loop,
+        tile_mix_cube_loop=4,
     )
 
     # Pairwise online-softmax merge
@@ -496,5 +519,6 @@ def kernel_da_fwd_u(
     o_acc, m_acc, l_acc = _merge(o_acc, m_acc, l_acc, o_aligned, m_aligned, l_aligned)
 
     # Normalize and write to output
-    o[:] = o_acc / l_acc.unsqueeze(-1)
-    lse[:] = torch.log(l_acc) + m_acc
+    safe_l = l_acc.clamp(min=1e-10)
+    o[:] = o_acc / safe_l.unsqueeze(-1)
+    lse[:] = torch.log(safe_l) + m_acc

@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
-from .micro_kernel import micro_kernel_bwd_kv, micro_kernel_bwd_kv_test
+from .micro_kernel import micro_kernel_bwd_kv, micro_kernel_bwd_kv_test, micro_kernel_bwd_kv_test2
 
 
 @triton.autotune(
@@ -228,8 +228,8 @@ def _kernel_bwd_kv_ur_residual(
 
             block_k = tl.load(ptr_k, mask=mask_kv, other=0.0)
             block_v = tl.load(ptr_v, mask=mask_kv, other=0.0)
-            block_dk = tl.load(ptr_dk, mask=mask_kv, other=0.0)
-            block_dv = tl.load(ptr_dv, mask=mask_kv, other=0.0)
+            block_dk = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
+            block_dv = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
 
             block_k = tl.trans(block_k)
             block_v = tl.trans(block_v)
@@ -354,8 +354,8 @@ def _kernel_bwd_kv_ur_aligned(
 
             block_k = tl.load(ptr_k, mask=mask_kv, other=0.0)
             block_v = tl.load(ptr_v, mask=mask_kv, other=0.0)
-            block_dk = tl.load(ptr_dk, mask=mask_kv, other=0.0)
-            block_dv = tl.load(ptr_dv, mask=mask_kv, other=0.0)
+            block_dk = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
+            block_dv = tl.full([BLOCK_C, H], 0.0, dtype=tl.float32)
 
             block_k = tl.trans(block_k)
             block_v = tl.trans(block_v)
@@ -364,8 +364,31 @@ def _kernel_bwd_kv_ur_aligned(
                 idx_n = idx_group * GROUP_SIZE + idx_ingroup
 
                 for idx_r in range(idx_c * BLOCK_C // BLOCK_R + 1, (seq_ed - seq_st + BLOCK_R - 1) // BLOCK_R):
-                    block_dk, block_dv = micro_kernel_bwd_kv_test(
-                        q, q2,
+                    # block_dk, block_dv = micro_kernel_bwd_kv_test(
+                    #     q, q2,
+                    #     block_k,
+                    #     block_v,
+                    #     do,
+                    #     d,
+                    #     block_dk,
+                    #     block_dv,
+                    #     lse,
+                    #     scale,
+                    #     scale_dv,
+                    #     seq_st + idx_r * BLOCK_R,
+                    #     seq_ed,
+                    #     None,
+                    #     idx_n,
+                    #     offs_h,
+                    #     STRIDE_Q_S,
+                    #     STRIDE_Q_N,
+                    #     STRIDE_Q_H,
+                    #     STRIDE_D_S,
+                    #     STRIDE_D_N,
+                    #     BLOCK_R,
+                    # )
+                    block_dk, block_dv = micro_kernel_bwd_kv_test2(
+                        q,
                         block_k,
                         block_v,
                         do,
@@ -610,11 +633,18 @@ def kernel_da_bwd_kv_ur(
     num_cores,
 ):
     
-    dk_workspace = torch.zeros_like(dk, dtype=torch.float32).npu()
-    dv_workspace = torch.zeros_like(dv, dtype=torch.float32).npu()
+    # dk_workspace = torch.zeros_like(dk, dtype=torch.float32).npu()
+    # dv_workspace = torch.zeros_like(dv, dtype=torch.float32).npu()
+    
+    dk_masked = torch.zeros_like(dk, dtype=torch.float32).npu()
+    dv_masked = torch.zeros_like(dv, dtype=torch.float32).npu()
+    dk_residual = torch.zeros_like(dk, dtype=torch.float32).npu()
+    dv_residual = torch.zeros_like(dv, dtype=torch.float32).npu()
+    dk_aligned = torch.zeros_like(dk, dtype=torch.float32).npu()
+    dv_aligned = torch.zeros_like(dv, dtype=torch.float32).npu()
 
     _kernel_bwd_kv_ur_masked[(num_cores,)](
-        q, k, v, do, d, lse, dk_workspace, dv_workspace,
+        q, k, v, do, d, lse, dk_masked, dv_masked,
         cu_seqlens, num_seqs, scale, mask_ur,
         GROUP_SIZE, S, N, H,
         STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
@@ -628,7 +658,7 @@ def kernel_da_bwd_kv_ur(
     )
     scale_dv = 1.0
     _kernel_bwd_kv_ur_residual[(num_cores,)](
-        q, k, v, do, d, lse, dk_workspace, dv_workspace,
+        q, k, v, do, d, lse, dk_residual, dv_residual,
         cu_seqlens, num_seqs, scale, scale_dv,
         GROUP_SIZE, S, N, H,
         STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
@@ -641,21 +671,24 @@ def kernel_da_bwd_kv_ur(
         tile_mix_cube_loop=4,
     )
     _kernel_bwd_kv_ur_aligned[(num_cores,)](
-        q, q, k, v, do, d, lse, dk_workspace, dv_workspace,
+        q, q, k, v, do, d, lse, dk_aligned, dv_aligned,
         cu_seqlens, num_seqs, scale, scale_dv,
         GROUP_SIZE, S, N, H,
         STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
         STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
         STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
         STRIDE_D_S, STRIDE_D_N,
-        limit_auto_multi_buffer_only_for_local_buffer=False,
-        set_workspace_multibuffer=4, 
-        tile_mix_vector_loop=2,
-        tile_mix_cube_loop=4,
+        # limit_auto_multi_buffer_only_for_local_buffer=False,
+        # set_workspace_multibuffer=4, 
+        # tile_mix_vector_loop=2,
+        # tile_mix_cube_loop=4,
     )
 
-    dk[S:] = dk_workspace[S:].to(torch.bfloat16)
-    dv[S:] = dv_workspace[S:].to(torch.bfloat16)
+    # dk[S:] = dk_workspace[S:].to(torch.bfloat16)
+    # dv[S:] = dv_workspace[S:].to(torch.bfloat16)
+    
+    dk[S:] = (dk_masked[S:] + dk_residual[S:] + dk_aligned[S:]).to(torch.bfloat16)
+    dv[S:] = (dv_masked[S:] + dv_residual[S:] + dv_aligned[S:]).to(torch.bfloat16)
     
     #####  debug test part
 
