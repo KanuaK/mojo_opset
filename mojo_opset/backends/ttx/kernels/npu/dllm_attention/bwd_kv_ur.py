@@ -238,8 +238,8 @@ def _kernel_bwd_kv_ur_residual(
                 idx_n = idx_group * GROUP_SIZE + idx_ingroup
 
                 for idx_tile_r in range(idx_c + 1, (idx_c * BLOCK_C // BLOCK_R + 1) * BLOCK_R // BLOCK_C):
-                    block_dk, block_dv = micro_kernel_bwd_kv_test(
-                        q, q,
+                    block_dk, block_dv = micro_kernel_bwd_kv_test2(
+                        q,
                         block_k,
                         block_v,
                         do,
@@ -280,7 +280,7 @@ def _kernel_bwd_kv_ur_aligned(
     q, q2,
     k,
     v,
-    do,
+    do, do2,
     d,
     lse,
     dk,
@@ -364,8 +364,31 @@ def _kernel_bwd_kv_ur_aligned(
                 idx_n = idx_group * GROUP_SIZE + idx_ingroup
 
                 for idx_r in range(idx_c * BLOCK_C // BLOCK_R + 1, (seq_ed - seq_st + BLOCK_R - 1) // BLOCK_R):
-                    # block_dk, block_dv = micro_kernel_bwd_kv_test(
-                    #     q, q2,
+                    block_dk, block_dv = micro_kernel_bwd_kv_test(
+                        q, q2,
+                        block_k,
+                        block_v,
+                        do, do2,
+                        d,
+                        block_dk,
+                        block_dv,
+                        lse,
+                        scale,
+                        scale_dv,
+                        seq_st + idx_r * BLOCK_R,
+                        seq_ed,
+                        None,
+                        idx_n,
+                        offs_h,
+                        STRIDE_Q_S,
+                        STRIDE_Q_N,
+                        STRIDE_Q_H,
+                        STRIDE_D_S,
+                        STRIDE_D_N,
+                        BLOCK_R,
+                    )
+                    # block_dk, block_dv = micro_kernel_bwd_kv_test2(
+                    #     q,
                     #     block_k,
                     #     block_v,
                     #     do,
@@ -387,29 +410,6 @@ def _kernel_bwd_kv_ur_aligned(
                     #     STRIDE_D_N,
                     #     BLOCK_R,
                     # )
-                    block_dk, block_dv = micro_kernel_bwd_kv_test2(
-                        q,
-                        block_k,
-                        block_v,
-                        do,
-                        d,
-                        block_dk,
-                        block_dv,
-                        lse,
-                        scale,
-                        scale_dv,
-                        seq_st + idx_r * BLOCK_R,
-                        seq_ed,
-                        None,
-                        idx_n,
-                        offs_h,
-                        STRIDE_Q_S,
-                        STRIDE_Q_N,
-                        STRIDE_Q_H,
-                        STRIDE_D_S,
-                        STRIDE_D_N,
-                        BLOCK_R,
-                    )
 
             tl.store(ptr_dk, block_dk, mask=mask_kv)
             tl.store(ptr_dv, block_dv, mask=mask_kv)
@@ -671,7 +671,7 @@ def kernel_da_bwd_kv_ur(
         tile_mix_cube_loop=4,
     )
     _kernel_bwd_kv_ur_aligned[(num_cores,)](
-        q, q, k, v, do, d, lse, dk_aligned, dv_aligned,
+        q, q, k, v, do, do, d, lse, dk_aligned, dv_aligned,
         cu_seqlens, num_seqs, scale, scale_dv,
         GROUP_SIZE, S, N, H,
         STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,

@@ -184,7 +184,7 @@ def micro_kernel_bwd_kv_test(
     q, q2,
     block_k,
     block_v,
-    do,
+    do, do2,
     d,
     block_dk,
     block_dv,
@@ -215,6 +215,9 @@ def micro_kernel_bwd_kv_test(
     ptr_do = (
         do + idx_n * STRIDE_Q_N + (offset_r + tl.arange(0, BLOCK_R))[:, None] * STRIDE_Q_S + offs_h[None, :] * STRIDE_Q_H
     )
+    ptr_do2 = (
+        do2 + idx_n * STRIDE_Q_N + (offset_r + tl.arange(0, BLOCK_R))[:, None] * STRIDE_Q_S + offs_h[None, :] * STRIDE_Q_H
+    )
     ptr_d = d + idx_n * STRIDE_D_N + (offset_r + tl.arange(0, BLOCK_R))[:] * STRIDE_D_S
     ptr_lse = lse + idx_n * STRIDE_D_N + (offset_r + tl.arange(0, BLOCK_R))[:] * STRIDE_D_S
 
@@ -233,7 +236,8 @@ def micro_kernel_bwd_kv_test(
     block_p = tl.exp(block_s - block_lse[:, None])
     block_dv += tl.dot(block_p.to(tl.bfloat16).T, block_do) * scale_dv
     block_d = tl.load(ptr_d, mask=mask_d, other=0.0)
-    block_dp = tl.dot(block_do, block_v)
+    block_do2 = tl.load(ptr_do2, mask=mask_q, other=0.0)
+    block_dp = tl.dot(block_do2, block_v)
     block_ds = block_p * (block_dp - block_d[:, None])
     block_q2 = tl.load(ptr_q2, mask=mask_q, other=0.0)
     block_dk += tl.dot(block_ds.to(tl.bfloat16).T, block_q2) * scale
