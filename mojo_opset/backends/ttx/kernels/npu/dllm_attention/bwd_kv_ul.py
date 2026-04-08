@@ -7,7 +7,7 @@ from .micro_kernel import micro_kernel_bwd_kv
 @triton.autotune(
     configs=[
         triton.Config(
-            {"BLOCK_R": 256, "BLOCK_C": 64},
+            {"BLOCK_R": 512, "BLOCK_C": 64},
         )
     ],
     key=["N", "H"],
@@ -112,14 +112,17 @@ def kernel_da_bwd_kv_ul(
 
                 block_dk, block_dv = micro_kernel_bwd_kv(
                     q,
+                    None,
                     block_k,
                     block_v,
                     do,
+                    None,
                     d,
                     block_dk,
                     block_dv,
                     lse,
                     scale,
+                    None,
                     seq_st + idx_c * BLOCK_C,
                     seq_ed,
                     block_mask_ul,

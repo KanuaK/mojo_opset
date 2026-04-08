@@ -442,8 +442,8 @@ def kernel_da_fwd_u(
     o_residual, m_residual, l_residual = _make_o_ws(), _make_m_ws(), _make_l_ws()
     o_aligned, m_aligned, l_aligned = _make_o_ws(), _make_m_ws(), _make_l_ws()
 
-    BLOCK_R, BLOCK_C = 64, 256
-    tile_mix_vector_loop = 4
+    BLOCK_R, BLOCK_C = 64, 512
+    tile_mix_vector_loop = 2
 
     _kernel_fwd_u_ul[(num_cores,)](
         q, k, v, o_ul, m_ul, l_ul,

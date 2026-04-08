@@ -7,57 +7,9 @@ from .micro_kernel import micro_kernel_bwd_q
 
 @triton.autotune(
     configs=[
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=8,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=8,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=8,
-        # ),
         triton.Config(
             {"BLOCK_R": 64},
         ),
-        # triton.Config(
-        #     {"BLOCK_R": 128},
-        # ),
     ],
     key=["N", "H"],
 )
@@ -151,6 +103,7 @@ def _kernel_bwd_q_u_masked_ul(
             block_dq = micro_kernel_bwd_q(
                 block_q,
                 k,
+                None,
                 v,
                 block_do,
                 block_d,
@@ -179,59 +132,7 @@ def _kernel_bwd_q_u_masked_ul(
 
 
 @triton.autotune(
-    configs=[
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=8,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=8,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=8,
-        # ),
-        triton.Config(
-            {"BLOCK_R": 64},
-        ),
-        # triton.Config(
-        #     {"BLOCK_R": 128},
-        # ),
-    ],
+    configs=[triton.Config({"BLOCK_R": 64},),],
     key=["N", "H"],
 )
 @triton.jit(do_not_specialize=["cu_seqlens", "num_seqs", "S", "STRIDE_D_N"])
@@ -324,6 +225,7 @@ def _kernel_bwd_q_u_masked_ur(
             block_dq = micro_kernel_bwd_q(
                 block_q,
                 k,
+                None,
                 v,
                 block_do,
                 block_d,
@@ -353,57 +255,9 @@ def _kernel_bwd_q_u_masked_ur(
 
 @triton.autotune(
     configs=[
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=8,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=8,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=8,
-        # ),
         triton.Config(
-            {"BLOCK_R": 64, "BLOCK_C": 256},
+            {"BLOCK_R": 64, "BLOCK_C": 512},
         ),
-        # triton.Config(
-        #     {"BLOCK_R": 128, "BLOCK_C": 512},
-        # ),
     ],
     key=["N", "H"],
 )
@@ -488,6 +342,7 @@ def _kernel_bwd_q_u_residual(
                 block_dq = micro_kernel_bwd_q(
                     block_q,
                     k,
+                    None,
                     v,
                     block_do,
                     block_d,
@@ -516,57 +371,9 @@ def _kernel_bwd_q_u_residual(
 
 @triton.autotune(
     configs=[
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=2,
-        #     tile_mix_cube_loop=8,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=4,
-        #     tile_mix_cube_loop=8,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=2,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=4,
-        # ),
-        # triton.Config(
-        #     {"BLOCK_R": 64, "BLOCK_C": 256},
-        #     tile_mix_vector_loop=8,
-        #     tile_mix_cube_loop=8,
-        # ),
         triton.Config(
-            {"BLOCK_R": 64, "BLOCK_C": 256},
+            {"BLOCK_R": 64, "BLOCK_C": 512},
         ),
-        # triton.Config(
-        #     {"BLOCK_R": 128, "BLOCK_C": 256},
-        # ),
     ],
     key=["N", "H"],
 )
@@ -574,6 +381,7 @@ def _kernel_bwd_q_u_residual(
 def _kernel_bwd_q_u_aligned(
     q,
     k,
+    k1,
     v,
     do,
     d,
@@ -651,6 +459,7 @@ def _kernel_bwd_q_u_aligned(
                 block_dq = micro_kernel_bwd_q(
                     block_q,
                     k,
+                    k1,
                     v,
                     block_do,
                     block_d,
@@ -915,7 +724,7 @@ def kernel_da_bwd_q_u(
     dq_masked_ur = torch.zeros_like(dq, dtype=torch.float32).npu()
     dq_residual = torch.zeros_like(dq, dtype=torch.float32).npu()
     dq_aligned = torch.zeros_like(dq, dtype=torch.float32).npu()
-
+    tile_mix_vector_loop=2
     _kernel_bwd_q_u_masked_ul[(num_cores,)](
         q, k, v, do, d, lse, dq_masked_ul,
         cu_seqlens, num_seqs, scale, mask_ul,
@@ -926,7 +735,7 @@ def kernel_da_bwd_q_u(
         STRIDE_D_S, STRIDE_D_N, STRIDE_MASK,
         limit_auto_multi_buffer_only_for_local_buffer=False,
         set_workspace_multibuffer=4,
-        tile_mix_vector_loop=2,
+        tile_mix_vector_loop=tile_mix_vector_loop,
         tile_mix_cube_loop=4,
     )
     _kernel_bwd_q_u_masked_ur[(num_cores,)](
@@ -939,7 +748,7 @@ def kernel_da_bwd_q_u(
         STRIDE_D_S, STRIDE_D_N, STRIDE_MASK,
         limit_auto_multi_buffer_only_for_local_buffer=False,
         set_workspace_multibuffer=4,
-        tile_mix_vector_loop=2,
+        tile_mix_vector_loop=tile_mix_vector_loop,
         tile_mix_cube_loop=4,
     )
     _kernel_bwd_q_u_residual[(num_cores,)](
@@ -952,21 +761,21 @@ def kernel_da_bwd_q_u(
         STRIDE_D_S, STRIDE_D_N,
         limit_auto_multi_buffer_only_for_local_buffer=False,
         set_workspace_multibuffer=4,
-        tile_mix_vector_loop=2,
+        tile_mix_vector_loop=tile_mix_vector_loop,
         tile_mix_cube_loop=4,
     )
     _kernel_bwd_q_u_aligned[(num_cores,)](
-        q, k, v, do, d, lse, dq_aligned,
+        q, k, k, v, do, d, lse, dq_aligned,
         cu_seqlens, num_seqs, scale,
         GROUP_SIZE, S, N, H,
         STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
         STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
         STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
         STRIDE_D_S, STRIDE_D_N,
-        # limit_auto_multi_buffer_only_for_local_buffer=False,
-        # set_workspace_multibuffer=4,
-        # tile_mix_vector_loop=2,
-        # tile_mix_cube_loop=4,
+        limit_auto_multi_buffer_only_for_local_buffer=False,
+        set_workspace_multibuffer=4,
+        tile_mix_vector_loop=tile_mix_vector_loop,
+        tile_mix_cube_loop=4,
     )
 
     dq[:] = (dq_masked_ul + dq_masked_ur + dq_residual + dq_aligned).to(torch.bfloat16)

@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
-from .micro_kernel import micro_kernel_bwd_kv, micro_kernel_bwd_kv_test, micro_kernel_bwd_kv_test2
+from .micro_kernel import micro_kernel_bwd_kv
 
 
 @triton.autotune(
@@ -112,14 +112,17 @@ def _kernel_bwd_kv_ur_masked(
 
                 block_dk, block_dv = micro_kernel_bwd_kv(
                     q,
+                    None,
                     block_k,
                     block_v,
                     do,
+                    None,
                     d,
                     block_dk,
                     block_dv,
                     lse,
                     scale,
+                    None,
                     seq_st + idx_c * BLOCK_C,
                     seq_ed,
                     block_mask_ur,
@@ -143,7 +146,7 @@ def _kernel_bwd_kv_ur_masked(
 @triton.autotune(
     configs=[
         triton.Config(
-            {"BLOCK_R": 256, "BLOCK_C": 64},
+            {"BLOCK_R": 512, "BLOCK_C": 64},
         ),
     ],
     key=["N", "H"],
@@ -238,11 +241,13 @@ def _kernel_bwd_kv_ur_residual(
                 idx_n = idx_group * GROUP_SIZE + idx_ingroup
 
                 for idx_tile_r in range(idx_c + 1, (idx_c * BLOCK_C // BLOCK_R + 1) * BLOCK_R // BLOCK_C):
-                    block_dk, block_dv = micro_kernel_bwd_kv_test2(
+                    block_dk, block_dv = micro_kernel_bwd_kv(
                         q,
+                        None,
                         block_k,
                         block_v,
                         do,
+                        None,
                         d,
                         block_dk,
                         block_dv,
@@ -270,7 +275,7 @@ def _kernel_bwd_kv_ur_residual(
 @triton.autotune(
     configs=[
         triton.Config(
-            {"BLOCK_R": 256, "BLOCK_C": 64},
+            {"BLOCK_R": 512, "BLOCK_C": 64},
         ),
     ],
     key=["N", "H"],
@@ -364,7 +369,7 @@ def _kernel_bwd_kv_ur_aligned(
                 idx_n = idx_group * GROUP_SIZE + idx_ingroup
 
                 for idx_r in range(idx_c * BLOCK_C // BLOCK_R + 1, (seq_ed - seq_st + BLOCK_R - 1) // BLOCK_R):
-                    block_dk, block_dv = micro_kernel_bwd_kv_test(
+                    block_dk, block_dv = micro_kernel_bwd_kv(
                         q, q2,
                         block_k,
                         block_v,
@@ -387,29 +392,6 @@ def _kernel_bwd_kv_ur_aligned(
                         STRIDE_D_N,
                         BLOCK_R,
                     )
-                    # block_dk, block_dv = micro_kernel_bwd_kv_test2(
-                    #     q,
-                    #     block_k,
-                    #     block_v,
-                    #     do,
-                    #     d,
-                    #     block_dk,
-                    #     block_dv,
-                    #     lse,
-                    #     scale,
-                    #     scale_dv,
-                    #     seq_st + idx_r * BLOCK_R,
-                    #     seq_ed,
-                    #     None,
-                    #     idx_n,
-                    #     offs_h,
-                    #     STRIDE_Q_S,
-                    #     STRIDE_Q_N,
-                    #     STRIDE_Q_H,
-                    #     STRIDE_D_S,
-                    #     STRIDE_D_N,
-                    #     BLOCK_R,
-                    # )
 
             tl.store(ptr_dk, block_dk, mask=mask_kv)
             tl.store(ptr_dv, block_dv, mask=mask_kv)
@@ -631,11 +613,7 @@ def kernel_da_bwd_kv_ur(
     STRIDE_D_N,
     STRIDE_MASK,
     num_cores,
-):
-    
-    # dk_workspace = torch.zeros_like(dk, dtype=torch.float32).npu()
-    # dv_workspace = torch.zeros_like(dv, dtype=torch.float32).npu()
-    
+): 
     dk_masked = torch.zeros_like(dk, dtype=torch.float32).npu()
     dv_masked = torch.zeros_like(dv, dtype=torch.float32).npu()
     dk_residual = torch.zeros_like(dk, dtype=torch.float32).npu()
@@ -643,6 +621,7 @@ def kernel_da_bwd_kv_ur(
     dk_aligned = torch.zeros_like(dk, dtype=torch.float32).npu()
     dv_aligned = torch.zeros_like(dv, dtype=torch.float32).npu()
 
+    tile_mix_vector_loop=2
     _kernel_bwd_kv_ur_masked[(num_cores,)](
         q, k, v, do, d, lse, dk_masked, dv_masked,
         cu_seqlens, num_seqs, scale, mask_ur,
@@ -653,7 +632,7 @@ def kernel_da_bwd_kv_ur(
         STRIDE_D_S, STRIDE_D_N, STRIDE_MASK,
         limit_auto_multi_buffer_only_for_local_buffer=False,
         set_workspace_multibuffer=4, 
-        tile_mix_vector_loop=2,
+        tile_mix_vector_loop=tile_mix_vector_loop,
         tile_mix_cube_loop=4,
     )
     scale_dv = 1.0
@@ -667,7 +646,7 @@ def kernel_da_bwd_kv_ur(
         STRIDE_D_S, STRIDE_D_N,
         limit_auto_multi_buffer_only_for_local_buffer=False,
         set_workspace_multibuffer=4, 
-        tile_mix_vector_loop=2,
+        tile_mix_vector_loop=tile_mix_vector_loop,
         tile_mix_cube_loop=4,
     )
     _kernel_bwd_kv_ur_aligned[(num_cores,)](
@@ -678,71 +657,11 @@ def kernel_da_bwd_kv_ur(
         STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
         STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
         STRIDE_D_S, STRIDE_D_N,
-        # limit_auto_multi_buffer_only_for_local_buffer=False,
-        # set_workspace_multibuffer=4, 
-        # tile_mix_vector_loop=2,
-        # tile_mix_cube_loop=4,
+        limit_auto_multi_buffer_only_for_local_buffer=False,
+        set_workspace_multibuffer=4, 
+        tile_mix_vector_loop=tile_mix_vector_loop,
+        tile_mix_cube_loop=4,
     )
-
-    # dk[S:] = dk_workspace[S:].to(torch.bfloat16)
-    # dv[S:] = dv_workspace[S:].to(torch.bfloat16)
     
     dk[S:] = (dk_masked[S:] + dk_residual[S:] + dk_aligned[S:]).to(torch.bfloat16)
     dv[S:] = (dv_masked[S:] + dv_residual[S:] + dv_aligned[S:]).to(torch.bfloat16)
-    
-    #####  debug test part
-
-    # _kernel_bwd_kv_ur_masked_2[(num_cores,)](
-    #     q, k, v, do, d, lse, dk_masked, dv_masked,
-    #     cu_seqlens, num_seqs, scale, mask_ur,
-    #     GROUP_SIZE, S, N, H,
-    #     STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
-    #     STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
-    #     STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
-    #     STRIDE_D_S, STRIDE_D_N, STRIDE_MASK,
-    #     # enable_ubuf_saving=True,
-    #     # multibuffer=True, # 现在默认是True，可不写，控制开double_buffer
-    #     # unit_flag=True, #cube搬出的一个优化项，比较容易卡死
-    #     # limit_auto_multi_buffer_only_for_local_buffer=False,
-    #     # set_workspace_multibuffer=4, 
-    #     # tile_mix_vector_loop=2,   # 可以2，4，8，主要修改此值
-    #     # tile_mix_cube_loop=4,    #可以2，4，8 去配，主要修改此值
-    # )
-
-    # dk[S:] = (dk_masked[S:] + dk_aligned[S:]).to(torch.bfloat16)
-    # dv[S:] = (dv_masked[S:] + dv_aligned[S:]).to(torch.bfloat16)
-
-
-    # dk_single = torch.zeros_like(dk, dtype=torch.float32).npu()
-    # dv_single = torch.zeros_like(dv, dtype=torch.float32).npu()
-
-    # kernel_da_bwd_kv_ur_single[(num_cores,)](
-    #     q, k, v, do, d, lse, dk_single, dv_single,
-    #     cu_seqlens, num_seqs, scale, mask_ur,
-    #     GROUP_SIZE, S, N, H,
-    #     STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
-    #     STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
-    #     STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
-    #     STRIDE_D_S, STRIDE_D_N, STRIDE_MASK,
-    # )
-    # _kernel_bwd_kv_ur_aligned[(num_cores,)](
-    #     q, k, v, do, d, lse, dk_single, dv_single,
-    #     cu_seqlens, num_seqs, scale, scale_dv,
-    #     GROUP_SIZE, S, N, H,
-    #     STRIDE_Q_S, STRIDE_Q_N, STRIDE_Q_H,
-    #     STRIDE_K_S, STRIDE_K_N, STRIDE_K_H,
-    #     STRIDE_V_S, STRIDE_V_N, STRIDE_V_H,
-    #     STRIDE_D_S, STRIDE_D_N,
-    # )
-    
-
-    # diff = (dk_masked[S:] - dk_single[S:]).abs()
-    # diff = (dk_residual[S:] - dk_single[S:]).abs()
-    # diff = (dk_aligned[S:] - dk_single[S:]).abs()
-    # diff = (dk[S:] - dk_single[S:]).abs()
-    # print(f"dk max diff: {diff.max()}, nonzero positions: {(diff > 1e-6).sum()}")
-    # diff = (dv_masked[S:] - dv_single[S:]).abs()
-    # diff = (dv_residual[S:] - dv_single[S:]).abs()
-    # diff = (dv_aligned[S:] - dv_single[S:]).abs()
-    # diff = (dv[S:] - dv_single[S:]).abs()
-    # print(f"dv max diff: {diff.max()}, nonzero positions: {(diff > 1e-6).sum()}")
