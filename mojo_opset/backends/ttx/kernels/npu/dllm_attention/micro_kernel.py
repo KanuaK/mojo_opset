@@ -54,7 +54,7 @@ def micro_kernel_fwd(
         block_s += ((boundary_mask.to(tl.float32) - 1.0) * 1e6)
     if block_mask is not None:
         block_s = tl.where(block_mask, block_s, -1.0e6)
-        tl.compile_hint(block_s, "bitwise_mask")
+        tl.extra.cann.extension.compile_hint(block_s, "bitwise_mask")
     block_m_1 = tl.maximum(block_m, tl.max(block_s, axis=1))
     block_s = tl.exp(block_s - block_m_1[:, None])
     block_l_1 = tl.exp(block_m - block_m_1) * block_l + tl.sum(block_s, axis=1)
@@ -114,7 +114,7 @@ def micro_kernel_bwd_q(
         block_s += ((boundary_mask.to(tl.float32) - 1.0) * 1e6)
     if block_mask is not None:
         block_s = tl.where(block_mask, block_s, -1.0e6)
-        tl.compile_hint(block_s, "bitwise_mask")
+        tl.extra.cann.extension.compile_hint(block_s, "bitwise_mask")
     block_p = tl.exp(block_s - block_lse[:, None])
     block_v = tl.load(ptr_v, mask=mask_kv, other=0.0)
     block_dp = tl.dot(block_do, block_v.T)
@@ -178,7 +178,7 @@ def micro_kernel_bwd_kv(
         block_s += ((boundary_mask.to(tl.float32) - 1.0) * 1e6)
     if block_mask is not None:
         block_s = tl.where(block_mask, block_s, -1.0e6)
-        tl.compile_hint(block_s, "bitwise_mask")
+        tl.extra.cann.extension.compile_hint(block_s, "bitwise_mask")
     block_do = tl.load(ptr_do, mask=mask_q, other=0.0)
     block_p = tl.exp(block_s - block_lse[:, None])
     if scale_dv is not None:
